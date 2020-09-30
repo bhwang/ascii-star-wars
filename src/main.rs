@@ -1,3 +1,4 @@
+use clap::{App, Arg};
 use core::time;
 use std::{
     fs,
@@ -5,15 +6,63 @@ use std::{
     thread,
 };
 
+fn main() {
+    let matches = App::new("ascii-star-wars")
+        .version("0.1.0")
+        .author("bhwang <github.com/bhwang>")
+        .about("Play Simon Jansen's Star Wars ASCIImation in the Terminal.")
+        .arg(
+            Arg::with_name("framerate_in_fps")
+                .value_name("fps")
+                .help("Specify framerate in frames per second (fps). Default is 15 fps.")
+                .short("f")
+                .long("framerate"),
+        )
+        .arg(
+            Arg::with_name("frame_offset")
+                .value_name("number_of_frames")
+                .help("Start the ASCIImation, skipping the inputted number of frames.")
+                .short("o")
+                .long("offset"),
+        )
+        .arg(
+            Arg::with_name("include_frame_counter")
+                .help("Display a frame counter below the frame while playing. (Not enabled by default.)")
+                .takes_value(false)
+                .short("c")
+                .long("counter"),
+        )
+        .get_matches();
+
+    // Parse numeric arguments
+    let mut fps = 15;
+    if let Some(s) = matches.value_of("framerate_in_fps") {
+        match s.parse::<u64>() {
+            Err(_e) => println!("Can't read framerate, setting fps = 15."),
+            Ok(f) => fps = f,
+        }
+    }
+
+    let mut offset = 0;
+    if let Some(t) = matches.value_of("frame_offset") {
+        match t.parse::<u64>() {
+            Err(_e) => println!("Can't read frame offset. Starting from the beginning."),
+            Ok(o) => offset = o,
+        }
+    }
+
+    parse_file(fps, offset, matches.is_present("include_frame_counter"));
+}
+
 #[derive(Debug)]
 struct Frame<'a> {
     frame_length: u64,
     frame: [&'a str; 13],
 }
 
-fn main() {
-    let raw_input =
-        fs::read_to_string("src/asciimation.txt").expect("Should have been able to read file");
+fn parse_file(framerate_in_fps: u64, frame_offset: u64, display_frame_counter: bool) {
+    let filepath = "src/asciimation.txt";
+    let raw_input = fs::read_to_string(filepath).expect("Should have been able to read file");
     let raw_frame_lines: Vec<&str> = raw_input.split('\n').collect();
 
     // We just want to parse the input text into "frames of asciimation".
@@ -41,15 +90,68 @@ fn main() {
         })
     }
 
-    for f in frames {
-        let duration = f.frame_length;
+    play_asciimation_with_offset(
+        frames,
+        framerate_in_fps,
+        frame_offset,
+        display_frame_counter,
+    );
+}
 
-        for line in f.frame {
+/// Plays the ASCIImation at the given framerate (in fps), skipping the first `offset` frames
+fn play_asciimation_with_offset(
+    frames: Vec<Frame>,
+    framerate_in_fps: u64,
+    frame_offset: u64,
+    display_frame_counter: bool,
+) {
+    let mut frame_counter = 0;
+
+    let mut skipped_frames = frame_offset;
+    let mut frames_to_play = Vec::new();
+    for f in frames {
+        if skipped_frames == 0 {
+            frames_to_play.push(f);
+        } else {
+            let duration = f.frame_length;
+            if skipped_frames >= duration {
+                skipped_frames -= duration;
+            } else {
+                frames_to_play.push(Frame {
+                    frame_length: duration - skipped_frames,
+                    frame: f.frame,
+                });
+            }
+        }
+    }
+
+    frame_counter += frame_offset;
+
+    clear_screen();
+    for current_frame in frames_to_play {
+        let duration = current_frame.frame_length;
+
+        for line in current_frame.frame {
             println!("{}", line);
         }
 
+        frame_counter += duration;
+        if display_frame_counter {
+            println!("");
+            println!("{}/15973", frame_counter);
+        }
+
         io::stdout().flush().unwrap();
-        print!("\x1B[2J\x1B[1;1H"); // clear screen and reset cursor
-        thread::sleep(time::Duration::from_millis(duration * 1000 / 15));
+        clear_screen();
+
+        let frame_duration_multiplier = 1000 / framerate_in_fps;
+        thread::sleep(time::Duration::from_millis(
+            duration * frame_duration_multiplier,
+        ));
     }
+}
+
+// Clears screen and puts cursor at the first row and column.
+fn clear_screen() {
+    print!("\x1B[2J\x1B[1;1H");
 }
