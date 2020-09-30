@@ -51,7 +51,12 @@ fn main() {
         }
     }
 
-    parse_file(fps, offset, matches.is_present("include_frame_counter"));
+    let length_of_asciimation = 15973;
+    if offset >= length_of_asciimation {
+        println!("Your chosen offset of {} frames skipped the whole ASCIImation, which only has {} frames! Choose a smaller offset if you want to see something.", offset, length_of_asciimation)
+    } else {
+        parse_file(fps, offset, matches.is_present("include_frame_counter"));
+    }
 }
 
 #[derive(Debug)]
